@@ -1,0 +1,8 @@
+{#
+metrics
+Snapmirror snapshot delta size metric
+#}
+
+{% for sm in snapmirror_stats %}
+sm_snap_delta{datacenter="{{ snapmirror_stats[sm].dc }}",cluster="{{ snapmirror_stats[sm].source_cluster }}",volume_uuid="{{ snapmirror_stats[sm].source_volume_uuid }}",source_volume="{{ snapmirror_stats[sm].source_volume_name }}",source_svm="{{ snapmirror_stats[sm].source_svm_name }}"} {{ snapmirror_stats[sm].delta_size | int }}
+{% endfor %}

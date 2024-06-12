@@ -1,0 +1,50 @@
+---
+- name: Set Connection Details
+  ansible.builtin.set_fact:
+    ontap_login: &ontap_login
+      hostname:                   "{{ cluster }}"
+      username:                   "{{ ontap_username | default(omit) }}"
+      password:                   "{{ ontap_password | default(omit) }}"
+      cert_filepath:              "{{ cert_pem       | default(omit) }}"
+      key_filepath:               "{{ cert_key       | default(omit) }}"
+      https:                      true
+      validate_certs:             false
+      use_rest:                   Always
+  no_log: true
+
+- name: Define collected metrics for this module
+  ansible.builtin.set_fact:
+    metrics_object_list: 
+      - cluster_nodes_info.j2
+
+- name: Get cluster nodes details
+  netapp.ontap.na_ontap_rest_info:
+    <<: *ontap_login
+    gather_subset: "cluster/nodes"
+    use_python_keys: yes
+    fields:
+      - 'name'
+      - 'uptime'
+  connection: local
+  register: node_info
+  
+
+- name: Collecting node stats data
+  ansible.builtin.set_fact:
+    cluster_nodes_stats: "{{ cluster_nodes_stats | default([]) + [{
+       'dc':      metric_defaults.dc,
+       'cluster': cluster,
+       'name':    node_item.name,
+       'uptime':  node_item.uptime
+    }]  }}"
+  loop: "{{ node_info.ontap_info.cluster_nodes.records }}"
+  loop_control:
+    loop_var: node_item
+
+- name: saving ONTAP facts to vars file   
+  delegate_to: localhost
+  copy:
+     content: "{{ node_info.ontap_info | to_nice_yaml }}"
+     dest:  "last_nodes_infos.yml"
+
+...

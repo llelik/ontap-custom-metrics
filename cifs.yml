@@ -1,0 +1,63 @@
+---
+- name: Set Connection Details
+  ansible.builtin.set_fact:
+    ontap_login: &ontap_login
+      hostname:                   "{{ cluster }}"
+      username:                   "{{ ontap_username | default(omit) }}"
+      password:                   "{{ ontap_password | default(omit) }}"
+      cert_filepath:              "{{ cert_pem       | default(omit) }}"
+      key_filepath:               "{{ cert_key       | default(omit) }}"
+      https:                      true
+      validate_certs:             false
+      use_rest:                   Always
+  no_log: true
+
+- name: Define collected metrics for this module
+  ansible.builtin.set_fact:
+    metrics_object_list: 
+      - cifs_conns.j2
+
+- name: Var defaults
+  ansible.builtin.set_fact:
+    cifs_sess_per_svm: 
+      sess_item.svm.name: 0
+
+- name: Get CIFS connections
+  netapp.ontap.na_ontap_rest_info:
+    <<: *ontap_login
+    gather_subset: "protocols/cifs/sessions"
+    use_python_keys: yes
+    fields:
+      - 'svm'
+      - 'connected_duration'
+  connection: local
+  register: cifs_sess_info
+
+- name: saving ONTAP facts to vars file   
+  delegate_to: localhost
+  copy:
+     content: "{{ cifs_sess_info.ontap_info | to_nice_yaml }}"
+     dest:  "last_cifs_sess_infos.yml"
+
+- name: Collecting cifs session duration data
+  ansible.builtin.set_fact:
+    cifs_sess_stats: "{{ cifs_sess_stats | default([]) + 
+      [{
+      'cluster':               cluster,
+      'dc':                    metric_defaults.dc,
+      'svm_name':              sess_item.svm.name, 
+      'session_conn_duration': sess_item.connected_duration | duration_to_seconds
+      }]
+      }}"
+  loop: "{{ cifs_sess_info.ontap_info.protocols_cifs_sessions.records }}"
+  loop_control:
+    loop_var: sess_item
+
+# - name: Collecting cifs session data
+#   ansible.builtin.set_fact:
+#     cifs_sess_per_svm: "{{ cifs_sess_per_svm | default({sess_item.svm.name: 0}) | combine({sess_item.svm.name: cifs_sess_per_svm[sess_item.svm.name] + 1})  }}"
+#   loop: "{{ cifs_sess_info.ontap_info.protocols_cifs_sessions.records }}"
+#   loop_control:
+#     loop_var: sess_item
+
+...

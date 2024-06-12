@@ -1,0 +1,85 @@
+- hosts: localhost 
+  gather_facts: no
+  connection: local
+  collections:
+    - netapp.ontap
+    - community.general
+  vars:
+    cluster: "jamaica"
+    metrics_object_list:
+      - "sm_snapshot_delta.j2"
+      - "sm_resync_forecast.j2"
+      - "sm_last_tx_speed.j2"
+    metric_defaults:
+      dc: "MUC"
+    to_tx_list: []
+
+  collections:
+    - netapp.ontap
+  tasks:
+  - name: include config
+    ansible.builtin.include_vars: 
+      dir: "./conf"
+
+  - name: Load Harvest configuration
+    set_fact:
+      harvest_conf: "{{ lookup('file', harvest_config) | from_yaml }}"
+
+  - name: Include respective tasks with local Harvest auth
+    ansible.builtin.include_tasks: "{{ custom_metrics_list.test }}"
+    vars:
+      cluster:        "{{ item.value.addr }}"
+      ontap_username: "{{ item.value.username }}"
+      ontap_password: "{{ item.value.password }}"
+      cert_pem:       "{{ harvest_path + item.value.ssl_cert }}"
+      cert_key:       "{{ harvest_path + item.value.ssl_key }}" 
+    loop: "{{ harvest_conf.Pollers | dict2items }}"
+    when: harvest_local
+
+  - name: Read remote Harvest configuration
+    slurp:
+      src: /opt/harvest/harvest.yml
+    delegate_to: "{{ harvest_host }}"
+    register: harvest_config
+    when: not harvest_local
+
+  - name: Copy certificates
+    fetch:
+      src: "{{ harvest_path + item.value.ssl_cert }}"
+      dest: /home/llelik/llelik/Bosch
+    loop: "{{ (harvest_config.content|b64decode|from_yaml).Pollers | dict2items }}"
+    when: not harvest_local
+
+  - name: Include respective tasks with remote Harvest auth
+    ansible.builtin.include_tasks: "{{ custom_metrics_list.test }}"
+    vars:
+      cluster:        "{{ item.value.addr }}"
+      ontap_username: "{{ item.value.username }}"
+      ontap_password: "{{ item.value.password }}"
+      cert_pem:       "{{ harvest_path + item.value.ssl_cert }}"
+      cert_key:       "{{ harvest_path + item.value.ssl_key }}" 
+    loop: "{{ harvest_conf.Pollers | dict2items }}"
+    when: not harvest_local
+
+  - name: render metrics in bento
+    set_fact:
+      req_body: "{{ lookup('template', 'templates/bentobox.j2') }}"
+
+  - name: Send data to gateway
+    uri:
+      url: "http://localhost:9091/metrics/job/sm_delta"
+      method: POST
+      headers:
+        Content-Type: text/xml
+      body: "{{ req_body }}"
+      status_code: 200
+      return_content: True
+    register: vol_resp
+
+  
+
+  # - name: saving ONTAP facts to vars file   
+  #   delegate_to: localhost
+  #   copy:
+  #      content: "{{ sm_info | to_nice_yaml }}"
+  #      dest:  "last_source_sm_infos.yml"

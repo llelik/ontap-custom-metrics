@@ -1,0 +1,8 @@
+{#
+metrics
+Last Snapmirror transfer "size / duration" metric (bps)
+#}
+
+{% for sm in snapmirror_stats %}
+sm_last_tx_speed_bps{datacenter="{{ snapmirror_stats[sm].dc }}",cluster="{{ snapmirror_stats[sm].source_cluster }}",source_volume="{{ snapmirror_stats[sm].source_volume_name }}",source_svm="{{ snapmirror_stats[sm].source_svm_name }}"} {{ (snapmirror_stats[sm].bytes_transferred / snapmirror_stats[sm].total_duration) | int }}
+{% endfor %}

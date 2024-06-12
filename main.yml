@@ -1,0 +1,46 @@
+---
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  collections:
+    - netapp.ontap
+  vars:
+    metric_defaults:
+      dc: "MUC"
+  collections:
+    - netapp.ontap
+  tasks:
+  - name: include config
+    ansible.builtin.include_vars: 
+      dir: "./conf"
+
+  - name: Load Harvest configuration
+    set_fact:
+      harvest_conf: "{{ lookup('file', harvest_config) | from_yaml }}"
+    no_log: true
+
+  - name: Include respective collector tasks
+    ansible.builtin.include_tasks: collect-loop.yml
+    loop: "{{ harvest_conf.Pollers.values() }}"
+    loop_control:
+      loop_var: data_source_item
+    no_log: true
+
+  - debug:
+      msg: "{{ metrics_object_list }}"
+
+  - name: Render metrics in bento
+    set_fact:
+      req_body: "{{ lookup('template', 'templates/bentobox.j2') }}"
+
+  - name: Send data to gateway
+    uri:
+      url: "http://localhost:9091/metrics/job/sm_delta"
+      method: POST
+      headers:
+        Content-Type: text/xml
+      body: "{{ req_body }}"
+      status_code: 200
+      return_content: True
+    register: vol_resp
+...

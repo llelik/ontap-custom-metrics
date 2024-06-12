@@ -1,0 +1,8 @@
+{#
+metrics
+Cluster nodes' uptime
+#}
+
+{% for node in cluster_nodes_stats %}
+cluser_node_uptime{datacenter="{{ node.dc }}",cluster="{{ node.cluster }}",node="{{ node.name }}"} {{ node.uptime | int }}
+{% endfor %}

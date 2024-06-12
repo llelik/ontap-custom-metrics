@@ -1,0 +1,8 @@
+custom_metrics_list:
+  snapmirror:        snapmirrors.yml
+  node_uptime:       nodes.yml #cifs.yml #snapmirrors.yml
+  #cifs:              cifs.yml
+harvest_config:      /opt/harvest/harvest.yml
+harvest_host:        192.168.56.101
+harvest_path:        /opt/harvest/   #keep with trailing /
+harvest_local:       True

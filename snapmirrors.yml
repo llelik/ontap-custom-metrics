@@ -1,0 +1,109 @@
+---
+- name: Set Connection Details
+  ansible.builtin.set_fact:
+    ontap_login: &ontap_login
+      hostname:                   "{{ cluster }}"
+      username:                   "{{ ontap_username | default(omit) }}"
+      password:                   "{{ ontap_password | default(omit) }}"
+      cert_filepath:              "{{ cert_pem       | default(omit) }}"
+      key_filepath:               "{{ cert_key       | default(omit) }}"
+      https:                      true
+      validate_certs:             false
+      use_rest:                   Always
+  no_log: true
+
+- name: Define collected metrics for this module
+  ansible.builtin.set_fact:
+    metrics_object_list: 
+      - sm_snapshot_delta.j2
+      - sm_resync_forecast.j2
+      - sm_last_tx_speed.j2
+
+
+- name: Get Snapmirror info from target
+  netapp.ontap.na_ontap_rest_info:
+    <<: *ontap_login
+    gather_subset: "snapmirror_info"
+    use_python_keys: yes
+    fields:
+      - 'source'
+      - 'destination'
+      - 'exported_snapshot'
+      - 'transfer'
+    parameters:
+      state: snapmirrored
+      group_type: none
+      healthy: true
+  connection: local
+  register: sm_info
+
+
+- name: saving ONTAP facts to vars file   
+  ansible.builtin.copy:
+    content: "{{ sm_info | to_nice_yaml }}"
+    dest:  "last_source_sm_infos.yml"
+  delegate_to: localhost
+
+- name: Get SM snapshots info from source ANSIBLE
+  netapp.ontap.na_ontap_rest_info:
+    <<: *ontap_login
+    hostname: "{{ sm_item.source.cluster.name }}"
+    gather_subset: "storage/volumes/snapshots"
+    use_python_keys: yes
+    fields:
+      - 'delta.size_consumed'
+      - 'svm'
+      - 'volume.uuid'
+      - 'volume.name'
+    owning_resource:
+      svm_name: "{{ sm_item.source.path.split(':')[0] }}"
+      volume_name: "{{ sm_item.source.path.split(':')[1] }}"
+    parameters:
+      name: "{{ sm_item.exported_snapshot }}"
+  connection: local
+  loop: "{{ sm_info.ontap_info.snapmirror_relationships.records }}"
+  loop_control:
+    loop_var: sm_item
+  when: sm_info.ontap_info.snapmirror_relationships.num_records > 0
+  register: snapshot_delta_info
+
+# - name: saving ONTAP facts to vars file   
+#   delegate_to: localhost
+#   copy:
+#      content: "{{ snapshot_delta_info | to_nice_yaml }}"
+#      dest:  "last_source_delta_infos.yml"
+
+- name: Get total speed per relashionship DICT
+  ansible.builtin.set_fact:
+    last_stats_list: "{{ last_stats_list | default([]) + [ {sm_rel_item.source.path: {
+      'source_cluster':     sm_rel_item.source.cluster.name,
+      'bytes_transferred':  sm_rel_item.transfer.bytes_transferred,
+      'total_duration':     sm_rel_item.transfer.total_duration|duration_to_seconds,
+      'source_volume_name': sm_rel_item.source.path.split(':')[1],
+      'source_svm_name':    sm_rel_item.source.path.split(':')[0]
+    }}] }}"
+  loop: "{{ sm_info.ontap_info.snapmirror_relationships.records }}"
+  loop_control:
+    loop_var: sm_rel_item
+  when: sm_info.ontap_info.snapmirror_relationships.num_records > 0
+
+- name: Get delta sizes from exported snapshot data DICT
+  ansible.builtin.set_fact:
+    to_tx_list: "{{ to_tx_list | default([]) + [ {snap_item.ontap_info.storage_volumes_snapshots.records.0.svm.name + ':' + snap_item.ontap_info.storage_volumes_snapshots.records.0.volume.name: {
+    'dc':                 metric_defaults.dc,
+    'source_cluster':     snap_item.sm_item.source.cluster.name,
+    'exported_snapshot':  snap_item.sm_item.exported_snapshot,
+    'source_volume_name': snap_item.ontap_info.storage_volumes_snapshots.records.0.volume.name,
+    'source_volume_uuid': snap_item.ontap_info.storage_volumes_snapshots.records.0.volume.uuid,
+    'source_svm_name':    snap_item.ontap_info.storage_volumes_snapshots.records.0.svm.name,
+    'delta_size':         snap_item.ontap_info.storage_volumes_snapshots.records.0.delta.size_consumed
+    }}] }}"
+  loop: "{{ snapshot_delta_info.results }}"
+  loop_control:
+    loop_var: snap_item
+  when: sm_info.ontap_info.snapmirror_relationships.num_records > 0
+
+- name: Merging mitrics
+  ansible.builtin.set_fact:
+    snapmirror_stats: "{{ to_tx_list | default([])| combine(last_stats_list|default([]), recursive=true)}}"
+...

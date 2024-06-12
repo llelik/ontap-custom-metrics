@@ -1,0 +1,8 @@
+{#
+metrics
+Number of cifs sessions per svm
+#}
+
+{% for sess in cifs_sess_stats %}
+cifs_sessions_dur_sec{datacenter="{{ sess.dc }}",cluster="{{ sess.cluster }}",svm="{{ sess.svm_name }}"} {{ sess.session_conn_duration | int }}
+{% endfor %}

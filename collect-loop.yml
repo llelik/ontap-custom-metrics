@@ -1,0 +1,13 @@
+---
+- name: Include respective tasks with local Harvest auth
+  ansible.builtin.include_tasks:  "{{ metric_collector_item }}"
+  vars:
+    cluster:        "{{ data_source_item.addr }}"
+    ontap_username: "{{ data_source_item.username }}" 
+    ontap_password: "{{ data_source_item.password }}"
+    cert_pem:       "{{ harvest_path + data_source_item.ssl_cert }}"
+    cert_key:       "{{ harvest_path + data_source_item.ssl_key }}" 
+  loop: "{{ custom_metrics_list.values() }}"
+  loop_control:
+      loop_var: metric_collector_item
+...

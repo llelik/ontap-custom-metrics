@@ -10,4 +10,20 @@
   loop: "{{ custom_metrics_list.values() }}"
   loop_control:
       loop_var: metric_collector_item
+
+- name: Render metrics in bento
+  set_fact:
+    req_body: "{{ lookup('template', 'templates/bentobox.j2') }}"
+
+- name: Send data to gateway
+  uri:
+    url: "http://localhost:9091/metrics/job/sm_delta"
+    method: POST
+    headers:
+      Content-Type: text/xml
+    body: "{{ req_body }}"
+    status_code: 200
+    return_content: True
+  register: vol_resp
+
 ...

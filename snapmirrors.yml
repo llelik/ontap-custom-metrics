@@ -12,12 +12,16 @@
       use_rest:                   Always
   no_log: true
 
-- name: Define collected metrics for this module
+- name: Snapmirror metrics defined
   ansible.builtin.set_fact:
-    metrics_object_list: 
+    snapmirror_metrics:
       - sm_snapshot_delta.j2
       - sm_resync_forecast.j2
       - sm_last_tx_speed.j2
+
+- name: Adding metrics for this module being collected 
+  ansible.builtin.set_fact:
+    metrics_object_list: "{{ (metrics_object_list + snapmirror_metrics) | unique }}"
 
 
 - name: Get Snapmirror info from target
@@ -43,6 +47,7 @@
     content: "{{ sm_info | to_nice_yaml }}"
     dest:  "last_source_sm_infos.yml"
   delegate_to: localhost
+  when: 1 == 0
 
 - name: Get SM snapshots info from source ANSIBLE
   netapp.ontap.na_ontap_rest_info:

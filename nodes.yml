@@ -12,10 +12,14 @@
       use_rest:                   Always
   no_log: true
 
-- name: Define collected metrics for this module
+- name: Nodes metrics defined
   ansible.builtin.set_fact:
-    metrics_object_list: 
+    nodes_metrics:
       - cluster_nodes_info.j2
+
+- name: Adding metrics for this module being collected 
+  ansible.builtin.set_fact:
+    metrics_object_list: "{{ (metrics_object_list + nodes_metrics) | unique }}"
 
 - name: Get cluster nodes details
   netapp.ontap.na_ontap_rest_info:
@@ -26,8 +30,7 @@
       - 'name'
       - 'uptime'
   connection: local
-  register: node_info
-  
+  register: node_info  
 
 - name: Collecting node stats data
   ansible.builtin.set_fact:
